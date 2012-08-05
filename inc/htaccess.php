@@ -1,25 +1,34 @@
 <?php
+/**
+ * URL rewriting and addition of HTML5 Boilerplate's .htaccess
+ *
+ * Rewrites currently do not happen for child themes (or network installs)
+ * @todo https://github.com/retlehs/roots/issues/461
+ *
+ * Rewrite:
+ *   /wp-content/themes/themename/css/ to /css/
+ *   /wp-content/themes/themename/js/  to /js/
+ *   /wp-content/themes/themename/img/ to /img/
+ *   /wp-content/plugins/              to /plugins/
+ *
+ * If you aren't using Apache, alternate configuration settings can be found in the wiki.
+ *
+ * @link https://github.com/retlehs/roots/wiki/Nginx
+ * @link https://github.com/retlehs/roots/wiki/Lighttpd
+ */
 
-// Using a server other than Apache? See:
-// https://github.com/retlehs/roots/wiki/Nginx
-// https://github.com/retlehs/roots/wiki/Lighttpd
+if (stristr($_SERVER['SERVER_SOFTWARE'], 'apache') || stristr($_SERVER['SERVER_SOFTWARE'], 'litespeed') !== false) {
 
-if (stristr($_SERVER['SERVER_SOFTWARE'], 'apache') !== false) {
+  // Show an admin notice if .htaccess isn't writable
   function roots_htaccess_writable() {
     if (!is_writable(get_home_path() . '.htaccess')) {
       if (current_user_can('administrator')) {
         add_action('admin_notices', create_function('', "echo '<div class=\"error\"><p>" . sprintf(__('Please make sure your <a href="%s">.htaccess</a> file is writable ', 'roots'), admin_url('options-permalink.php')) . "</p></div>';"));
       }
-    };
+    }
   }
 
   add_action('admin_init', 'roots_htaccess_writable');
-
-  // Rewrites DO NOT happen for child themes
-  // rewrite /wp-content/themes/roots/css/ to /css/
-  // rewrite /wp-content/themes/roots/js/  to /js/
-  // rewrite /wp-content/themes/roots/img/ to /js/
-  // rewrite /wp-content/plugins/ to /plugins/
 
   function roots_add_rewrites($content) {
     global $wp_rewrite;
@@ -29,7 +38,7 @@ if (stristr($_SERVER['SERVER_SOFTWARE'], 'apache') !== false) {
       'img/(.*)'      => THEME_PATH . '/img/$1',
       'plugins/(.*)'  => RELATIVE_PLUGIN_PATH . '/$1'
     );
-    $wp_rewrite->non_wp_rules = $roots_new_non_wp_rules;
+    $wp_rewrite->non_wp_rules = array_merge($wp_rewrite->non_wp_rules, $roots_new_non_wp_rules);
     return $content;
   }
 
@@ -41,11 +50,16 @@ if (stristr($_SERVER['SERVER_SOFTWARE'], 'apache') !== false) {
     }
   }
 
-  // only use clean urls if the theme isn't a child or an MU (Network) install
-  if (!is_multisite() && !is_child_theme()) {
-    add_action('generate_rewrite_rules', 'roots_add_rewrites');
-    add_action('generate_rewrite_rules', 'roots_add_h5bp_htaccess');
-    if (!is_admin()) {
+  if (!is_multisite() && !is_child_theme() && get_option('permalink_structure')) {
+    if (current_theme_supports('rewrite-urls')) {
+      add_action('generate_rewrite_rules', 'roots_add_rewrites');
+    }
+
+    if (current_theme_supports('h5bp-htaccess')) {
+      add_action('generate_rewrite_rules', 'roots_add_h5bp_htaccess');
+    }
+
+    if (!is_admin() && current_theme_supports('rewrite-urls')) {
       $tags = array(
         'plugins_url',
         'bloginfo',
@@ -59,7 +73,7 @@ if (stristr($_SERVER['SERVER_SOFTWARE'], 'apache') !== false) {
     }
   }
 
-  // add the contents of h5bp-htaccess into the .htaccess file
+  // Add the contents of h5bp-htaccess into the .htaccess file
   function roots_add_h5bp_htaccess($content) {
     global $wp_rewrite;
     $home_path = function_exists('get_home_path') ? get_home_path() : ABSPATH;
@@ -69,10 +83,10 @@ if (stristr($_SERVER['SERVER_SOFTWARE'], 'apache') !== false) {
     if ((!file_exists($htaccess_file) && is_writable($home_path) && $wp_rewrite->using_mod_rewrite_permalinks()) || is_writable($htaccess_file)) {
       if ($mod_rewrite_enabled) {
         $h5bp_rules = extract_from_markers($htaccess_file, 'HTML5 Boilerplate');
-          if ($h5bp_rules === array()) {
-            $filename = __DIR__ . '/h5bp-htaccess';
-            return insert_with_markers($htaccess_file, 'HTML5 Boilerplate', extract_from_markers($filename, 'HTML5 Boilerplate'));
-          }
+        if ($h5bp_rules === array()) {
+          $filename = dirname(__FILE__) . '/h5bp-htaccess';
+          return insert_with_markers($htaccess_file, 'HTML5 Boilerplate', extract_from_markers($filename, 'HTML5 Boilerplate'));
+        }
       }
     }
 
